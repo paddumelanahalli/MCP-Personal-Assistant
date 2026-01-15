@@ -1,96 +1,71 @@
-import os
 import asyncio
-from datetime import datetime, timezone
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
-from google.auth.transport.requests import Request
-from googleapiclient.discovery import build
-from mcp.server.fastmcp import FastMCP
-from ddgs import DDGS
+import os
+from dotenv import load_dotenv
+from google import genai
+from google.genai import types
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
 
-# OAuth Scopes for Gmail and Calendar
-SCOPES = [
-    'https://www.googleapis.com/auth/gmail.readonly',
-    'https://www.googleapis.com/auth/gmail.compose',
-    'https://www.googleapis.com/auth/calendar.readonly'
-]
+# Load environment variables (API Keys)
+load_dotenv()
+API_KEY = os.getenv("GEMINI_API_KEY")
+MODEL_ID = "gemini-2.0-flash"
 
-mcp = FastMCP("Cisco-Personal-Assistant")
 
-def get_google_creds():
-    creds = None
-    if os.path.exists('token.json'):
-        creds = Credentials.from_authorized_user_file('token.json', SCOPES)
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
-            creds = flow.run_local_server(port=0)
-        with open('token.json', 'w') as token:
-            token.write(creds.to_json())
-    return creds
+async def main():
+    # Initialize Gemini Client
+    client = genai.Client(api_key=API_KEY)
 
-@mcp.tool()
-async def get_weather(city: str = "San Jose"):
-    """Fetches real-time weather summary."""
-    return f"The weather in {city} is currently 65°F and Partly Cloudy."
+    # Define local server parameters
+    server_params = StdioServerParameters(command="python", args=["server.py"])
 
-@mcp.tool()
-async def get_unread_emails(limit: int = 3):
-    """Summarizes recent unread Gmail messages."""
-    try:
-        service = build('gmail', 'v1', credentials=get_google_creds())
-        results = service.users().messages().list(userId='me', q="is:unread label:INBOX", maxResults=limit).execute()
-        messages = results.get('messages', [])
-        if not messages: return "No unread emails."
-        summaries = []
-        for msg in messages:
-            txt = service.users().messages().get(userId='me', id=msg['id']).execute()
-            subj = next(h['value'] for h in txt['payload']['headers'] if h['name'] == 'Subject')
-            summaries.append(f"Subject: {subj} | Snippet: {txt.get('snippet','')}")
-        return "\n".join(summaries)
-    except Exception as e: return f"Gmail Error: {e}"
+    async with stdio_client(server_params) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            print("✅ Connection to MCP Server Established.")
 
-@mcp.tool()
-async def get_calendar_events(limit: int = 3):
-    """Lists upcoming appointments and birthdays."""
-    try:
-        service = build('calendar', 'v3', credentials=get_google_creds())
-        now = datetime.now(timezone.utc).isoformat()
-        events_result = service.events().list(calendarId='primary', timeMin=now, maxResults=limit, singleEvents=True, orderBy='startTime').execute()
-        events = events_result.get('items', [])
-        if not events: return "No upcoming events."
-        return "\n".join([f"- {e.get('summary')} ({e['start'].get('dateTime', e['start'].get('date'))})" for e in events])
-    except Exception as e: return f"Calendar Error: {e}"
+            # 1. Gather initial context via the unified Master Tool
+            print("Gathering morning context...")
+            status_res = await session.call_tool("get_morning_status", arguments={"city": "San Francisco"})
+            context = status_res.content[0].text
 
-@mcp.tool()
-async def web_search(query: str):
-    """Performs an AI-powered web search for gift ideas or research."""
-    try:
-        with DDGS() as ddgs:
-            results = [r for r in ddgs.text(query, max_results=2)]
-            return "\n".join([f"{r['title']}: {r['body']}" for r in results])
-    except Exception as e: return f"Search Error: {e}"
+            # 2. Define wrapper functions for Automatic Function Calling
+            async def web_search(query: str):
+                result = await session.call_tool("web_search", arguments={"query": query})
+                return result.content[0].text
 
-@mcp.tool()
-async def create_draft(subject: str, body: str):
-    """Creates a new Gmail draft with the suggested gift ideas."""
-    try:
-        service = build('gmail', 'v1', credentials=get_google_creds())
-        message = {'message': {'raw': ""}, 'userId': 'me'} # Simple placeholder logic
-        return f"SUCCESS: Draft created with subject '{subject}'"
-    except Exception as e: return f"Draft Error: {e}"
+            async def create_draft(subject: str, body: str):
+                result = await session.call_tool("create_draft", arguments={"subject": subject, "body": body})
+                return result.content[0].text
 
-@mcp.tool()
-async def get_morning_status(city: str = "San Jose"):
-    """Unified command to gather Weather, Mail, and Calendar in parallel."""
-    weather, emails, calendar = await asyncio.gather(
-        get_weather(city),
-        get_unread_emails(),
-        get_calendar_events()
-    )
-    return f"WEATHER: {weather}\nGMAIL: {emails}\nCALENDAR: {calendar}"
+            # 3. Configure Gemini for Autonomous Action
+            config = types.GenerateContentConfig(
+                tools=[web_search, create_draft],
+                automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=False)
+            )
+
+            prompt = (
+                f"CONTEXT DATA:\n{context}\n\n"
+                "INSTRUCTIONS:\n"
+                "1. Summarize the unread emails and upcoming calendar events into a concise briefing.\n"
+                "2. If a birthday or significant anniversary is noted, use 'web_search' to find gift ideas.\n"
+                "3. If gift ideas are found, use 'create_draft' to prepare a message for me to review.\n"
+                "4. Deliver the final briefing in a professional tone."
+            )
+
+            print("Gemini is analyzing and taking action...")
+
+            # The SDK handles the Call -> Response -> Final Summary loop automatically
+            response = await client.aio.models.generate_content(
+                model=MODEL_ID,
+                contents=prompt,
+                config=config
+            )
+
+            print(f"\n{'=' * 20} FINAL BRIEFING {'=' * 20}\n")
+            print(response.text.strip())
+            print(f"\n{'=' * 56}")
+
 
 if __name__ == "__main__":
-    mcp.run()
+    asyncio.run(main())
