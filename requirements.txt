@@ -1,0 +1,6 @@
+mcp
+google-genai
+duckduckgo-search
+google-auth-oauthlib
+google-api-python-client
+python-dotenv
