@@ -1,4 +1,6 @@
 # MCP-Personal-Assistant  🤖 Autonomous Morning Briefing Agent
+An autonomous Morning Briefing agent built with Gemini 2.0 Flash and the Model Context Protocol (MCP). Features proactive reasoning, multi-turn tool use, and local-first privacy
+
 Gemini 2.0 Flash + Model Context Protocol (MCP)
 This repository contains a personal project that implements an autonomous "Executive Assistant" using the Model Context Protocol (MCP). The agent bridges the gap between high-level LLM reasoning and local data silos (Gmail, Calendar, Weather) to provide a proactive morning briefing.
 
