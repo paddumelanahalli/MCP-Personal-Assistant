@@ -67,3 +67,7 @@ Asynchronous Performance: Utilizing asyncio.gather for tool execution reduced co
 
 Final Project Status: Feature Complete ✅
 The project successfully demonstrates the transition from a simple "Chat-with-Data" bot to a "Reason-and-Act" autonomous agent.
+
+Contact / Let's Connect:
+
+"I'm passionate about the future of local-first AI and Agentic workflows. If you're building in the MCP space, let's connect on LinkedIn!"
