@@ -49,15 +49,14 @@ Code snippet
 
 GEMINI_API_KEY=your_api_key_here
 3. Installation
-Bash
-
 pip install mcp google-genai duckduckgo-search google-auth-oauthlib google-api-python-client python-dotenv
+
 4. Usage
 Ensure server.py is in the same directory as run_check_mcp.py:
 
-Bash
-
 python run_check_mcp.py
+
+
 🧠 Key Learnings
 Local-First Privacy: By using MCP, sensitive data like emails and calendar events are processed locally. Only summarized context is sent to the LLM.
 
@@ -66,8 +65,8 @@ Automatic Function Calling: Leveraging the automatic_function_calling configurat
 Asynchronous Performance: Utilizing asyncio.gather for tool execution reduced context-gathering latency by over 50%.
 
 Final Project Status: Feature Complete ✅
+
 The project successfully demonstrates the transition from a simple "Chat-with-Data" bot to a "Reason-and-Act" autonomous agent.
 
 Contact / Let's Connect:
-
 "I'm passionate about the future of local-first AI and Agentic workflows. If you're building in the MCP space, let's connect on LinkedIn!"
